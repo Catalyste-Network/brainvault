@@ -9,6 +9,10 @@ React Native companion app for [MindVault](https://github.com/mindvault) — bro
 - Pull to refresh
 - Copy resource access URLs
 - On-chain registry count in the header
+- **Sort catalog** by title, price, or date (ascending or descending) — tap a sort chip once to select it, tap again to toggle direction
+- **Recently Viewed** — automatically tracks the last 20 resources you've opened, accessible via the 🕐 button in the catalog header; includes a "Clear History" action
+- **Personal Notes** — attach private, per-resource notes from the resource detail screen; notes are stored locally and persist across sessions
+- **Favorites quick-access** — star (★) button in the catalog header for one-tap navigation to your saved favorites
 
 ## Prerequisites
 

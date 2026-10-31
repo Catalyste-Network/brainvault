@@ -42,6 +42,8 @@ interface PersistedFilters {
   resourceType: ResourceTypeFilter;
   minPrice: string;
   maxPrice: string;
+  sortBy: SortOption;
+  sortDir: SortDirection;
 }
 
 interface CatalogScreenProps {
@@ -50,9 +52,13 @@ interface CatalogScreenProps {
 
 type VerificationFilter = "all" | VerificationStatus;
 type ResourceTypeFilter = "all" | "file" | "link";
+type SortOption = "default" | "title" | "price" | "date";
+type SortDirection = "asc" | "desc";
 
 const DEFAULT_VERIFICATION: VerificationFilter = "all";
 const DEFAULT_RESOURCE_TYPE: ResourceTypeFilter = "all";
+const DEFAULT_SORT: SortOption = "default";
+const DEFAULT_SORT_DIR: SortDirection = "asc";
 
 const VERIFICATION_OPTIONS: { value: VerificationFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -66,6 +72,42 @@ const RESOURCE_TYPE_OPTIONS: { value: ResourceTypeFilter; label: string }[] = [
   { value: "file", label: "File" },
   { value: "link", label: "Link" },
 ];
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "title", label: "Title" },
+  { value: "price", label: "Price" },
+  { value: "date", label: "Date" },
+];
+
+function sortResources(
+  resources: Resource[],
+  sortBy: SortOption,
+  sortDir: SortDirection
+): Resource[] {
+  if (sortBy === "default") return resources;
+
+  const sorted = [...resources].sort((a, b) => {
+    switch (sortBy) {
+      case "title":
+        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      case "price": {
+        const pa = parseFloat(a.price) || 0;
+        const pb = parseFloat(b.price) || 0;
+        return pa - pb;
+      }
+      case "date": {
+        const da = new Date(a.updatedAt ?? a.publishedAt ?? 0).getTime();
+        const db = new Date(b.updatedAt ?? b.publishedAt ?? 0).getTime();
+        return da - db;
+      }
+      default:
+        return 0;
+    }
+  });
+
+  return sortDir === "desc" ? sorted.reverse() : sorted;
+}
 
 function formatLastUpdated(value: Date): string {
   return value.toLocaleString([], {
@@ -90,6 +132,24 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "space-between",
       alignItems: "flex-start",
       gap: spacing.md,
+    },
+    navRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    navButton: {
+      borderRadius: 10,
+      backgroundColor: colors.neutralBg,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      minHeight: 44,
+      minWidth: 44,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    navButtonText: {
+      fontSize: 20,
+      color: colors.textMuted,
     },
     settingsButton: {
       borderRadius: 10,
@@ -163,6 +223,21 @@ function createStyles(colors: ThemeColors) {
     chipTextActive: {
       color: colors.primary,
       fontWeight: "600",
+    },
+    sortDirButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    sortDirButtonText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.primary,
     },
     priceRow: {
       flexDirection: "row",
@@ -296,6 +371,8 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
   );
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>(DEFAULT_SORT);
+  const [sortDir, setSortDir] = useState<SortDirection>(DEFAULT_SORT_DIR);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -309,11 +386,13 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
         const raw = await AsyncStorage.getItem(CATALOG_FILTERS_KEY);
         if (raw) {
           const saved: PersistedFilters = JSON.parse(raw);
-          setSearch(saved.search);
-          setVerification(saved.verification);
-          setResourceType(saved.resourceType);
-          setMinPrice(saved.minPrice);
-          setMaxPrice(saved.maxPrice);
+          setSearch(saved.search ?? "");
+          setVerification(saved.verification ?? DEFAULT_VERIFICATION);
+          setResourceType(saved.resourceType ?? DEFAULT_RESOURCE_TYPE);
+          setMinPrice(saved.minPrice ?? "");
+          setMaxPrice(saved.maxPrice ?? "");
+          setSortBy(saved.sortBy ?? DEFAULT_SORT);
+          setSortDir(saved.sortDir ?? DEFAULT_SORT_DIR);
         }
       } catch {
       } finally {
@@ -326,14 +405,22 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
   useEffect(() => {
     async function persistFilters() {
       if (!filtersRestored.current) return;
-      const data: PersistedFilters = { search, verification, resourceType, minPrice, maxPrice };
+      const data: PersistedFilters = {
+        search,
+        verification,
+        resourceType,
+        minPrice,
+        maxPrice,
+        sortBy,
+        sortDir,
+      };
       try {
         await AsyncStorage.setItem(CATALOG_FILTERS_KEY, JSON.stringify(data));
       } catch {
       }
     }
     persistFilters();
-  }, [search, verification, resourceType, minPrice, maxPrice]);
+  }, [search, verification, resourceType, minPrice, maxPrice, sortBy, sortDir]);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -399,7 +486,8 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
     verification !== DEFAULT_VERIFICATION ||
     resourceType !== DEFAULT_RESOURCE_TYPE ||
     minPrice.trim() !== "" ||
-    maxPrice.trim() !== "";
+    maxPrice.trim() !== "" ||
+    sortBy !== DEFAULT_SORT;
 
   const clearFilters = useCallback(() => {
     setSearch("");
@@ -407,6 +495,8 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
     setResourceType(DEFAULT_RESOURCE_TYPE);
     setMinPrice("");
     setMaxPrice("");
+    setSortBy(DEFAULT_SORT);
+    setSortDir(DEFAULT_SORT_DIR);
   }, []);
 
   const priceRange = useMemo(
@@ -414,9 +504,22 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
     [minPrice, maxPrice],
   );
 
-  const filteredResources = useMemo(
-    () => filterByPriceRange(resources, priceRange),
-    [resources, priceRange],
+  const filteredResources = useMemo(() => {
+    const priceFiltered = filterByPriceRange(resources, priceRange);
+    return sortResources(priceFiltered, sortBy, sortDir);
+  }, [resources, priceRange, sortBy, sortDir]);
+
+  const handleSortPress = useCallback(
+    (option: SortOption) => {
+      if (option === sortBy) {
+        // Toggle direction if tapping the already active sort
+        setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      } else {
+        setSortBy(option);
+        setSortDir("asc");
+      }
+    },
+    [sortBy]
   );
 
   function renderEmpty() {
@@ -473,14 +576,32 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
                   </Text>
                 ) : null}
               </View>
-              <Pressable
-                style={styles.settingsButton}
-                onPress={() => navigation.navigate("Settings")}
-                accessibilityRole="button"
-                accessibilityLabel="Open settings"
-              >
-                <Text style={styles.settingsButtonText}>⚙</Text>
-              </Pressable>
+              <View style={styles.navRow}>
+                <Pressable
+                  style={styles.navButton}
+                  onPress={() => navigation.navigate("RecentlyViewed")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Recently viewed"
+                >
+                  <Text style={styles.navButtonText}>🕐</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.navButton}
+                  onPress={() => navigation.navigate("Favorites")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Favorites"
+                >
+                  <Text style={styles.navButtonText}>★</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.settingsButton}
+                  onPress={() => navigation.navigate("Settings")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open settings"
+                >
+                  <Text style={styles.settingsButtonText}>⚙</Text>
+                </Pressable>
+              </View>
             </View>
 
             <TextInput
@@ -570,6 +691,50 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
                 </View>
               </View>
 
+              {/* Sort options */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Sort By</Text>
+                <View
+                  style={styles.chipRow}
+                  accessibilityRole="radiogroup"
+                  accessibilityLabel="Sort order"
+                >
+                  {SORT_OPTIONS.map((option) => {
+                    const active = sortBy === option.value;
+                    const isNonDefault = active && option.value !== "default";
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => handleSortPress(option.value)}
+                        style={[styles.chip, active && styles.chipActive]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
+                        accessibilityLabel={`Sort by ${option.label}${isNonDefault ? `, ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        accessibilityHint={
+                          active && option.value !== "default"
+                            ? "Tap to toggle sort direction"
+                            : "Tap to sort by this field"
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            active && styles.chipTextActive,
+                          ]}
+                        >
+                          {option.label}
+                          {isNonDefault
+                            ? sortDir === "asc"
+                              ? " ↑"
+                              : " ↓"
+                            : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
               <View style={styles.filterGroup}>
                 <Text style={styles.filterLabel}>Price (USDC)</Text>
                 <View style={styles.priceRow}>
@@ -586,7 +751,6 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       accessibilityLabel="Minimum price"
-
                       accessibilityHint={
                         priceRange.isInvalid ? INVALID_PRICE_RANGE_MESSAGE : undefined
                       }
@@ -605,7 +769,6 @@ export function CatalogScreen({ navigation }: CatalogScreenProps) {
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       accessibilityLabel="Maximum price"
-
                       accessibilityHint={
                         priceRange.isInvalid ? INVALID_PRICE_RANGE_MESSAGE : undefined
                       }

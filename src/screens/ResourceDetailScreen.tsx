@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -22,6 +23,8 @@ import { spacing } from "../theme";
 import type { ThemeColors } from "../theme";
 import { useAppTheme } from "../theme/ThemeProvider";
 import { openExternalUrl, stellarExpertAccountUrl, stellarExpertTxUrl } from "../utils/stellarExpert";
+import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
+import { useResourceNotes } from "../hooks/useResourceNotes";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ResourceDetail">;
 
@@ -196,6 +199,96 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       fontWeight: "600",
     },
+    // Notes section
+    notesSection: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.md,
+      gap: spacing.sm,
+    },
+    notesSectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    notesLabel: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    notesEditButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 8,
+      backgroundColor: colors.neutralBg,
+    },
+    notesEditButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    notesInput: {
+      minHeight: 90,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: spacing.sm,
+      fontSize: 14,
+      color: colors.text,
+      backgroundColor: colors.surface,
+      textAlignVertical: "top",
+    },
+    notesInputFocused: {
+      borderColor: colors.primary,
+    },
+    notesSaveRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      justifyContent: "flex-end",
+    },
+    notesSaveButton: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+    },
+    notesSaveButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: "#ffffff",
+    },
+    notesCancelButton: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: 8,
+      backgroundColor: colors.neutralBg,
+    },
+    notesCancelButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.textMuted,
+    },
+    notesDeleteButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 8,
+      backgroundColor: colors.dangerBg,
+    },
+    notesDeleteButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.danger,
+    },
+    notesText: {
+      fontSize: 14,
+      color: colors.text,
+      lineHeight: 20,
+    },
+    notesEmpty: {
+      fontSize: 13,
+      color: colors.textSubtle,
+      fontStyle: "italic",
+    },
   });
 }
 
@@ -215,6 +308,15 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
   } | { type: "external"; url: string } | null>(null);
   const [accessing, setAccessing] = useState(false);
 
+  // Notes state
+  const { getNote, setNote, deleteNote } = useResourceNotes();
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteFocused, setNoteFocused] = useState(false);
+
+  // Recently viewed tracking
+  const { addRecentlyViewed } = useRecentlyViewed();
+
   const loadResource = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -223,6 +325,8 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
       const data = await fetchResource(resourceId);
       setResource(data);
       navigation.setOptions({ title: data.title });
+      // Track this resource as recently viewed.
+      void addRecentlyViewed(resourceId);
     } catch (err) {
       if (err instanceof ResourceFetchError) {
         setError(err.message);
@@ -234,7 +338,7 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [resourceId, navigation]);
+  }, [resourceId, navigation, addRecentlyViewed]);
 
   useEffect(() => {
     void loadResource();
@@ -249,6 +353,29 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
   useEffect(() => {
     setAccessResult(null);
   }, [resource]);
+
+  // Sync note draft when entering edit mode
+  const handleStartEditNote = useCallback(() => {
+    setNoteDraft(getNote(resourceId));
+    setEditingNote(true);
+  }, [getNote, resourceId]);
+
+  const handleSaveNote = useCallback(async () => {
+    await setNote(resourceId, noteDraft);
+    setEditingNote(false);
+    setToast(noteDraft.trim() ? "Note saved" : "Note cleared");
+  }, [resourceId, noteDraft, setNote]);
+
+  const handleCancelEditNote = useCallback(() => {
+    setEditingNote(false);
+    setNoteDraft("");
+  }, []);
+
+  const handleDeleteNote = useCallback(async () => {
+    await deleteNote(resourceId);
+    setEditingNote(false);
+    setToast("Note deleted");
+  }, [deleteNote, resourceId]);
 
   async function handleAccess() {
     if (!resource) return;
@@ -346,6 +473,7 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
   const verification = verificationStyle(resource.verificationStatus, colors);
   const onchain = onchainStyle(resource.onchainStatus, colors);
   const timestamp = getResourceTimestamp(resource);
+  const existingNote = getNote(resourceId);
 
   return (
     <SafeAreaView style={shared.screen} edges={["bottom"]}>
@@ -414,10 +542,7 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
         <View style={styles.infoRow}>
           <Text style={styles.label}>Access URL</Text>
         </View>
-        <Text 
-          style={styles.urlText}
-          selectable={true}
-        >
+        <Text style={styles.urlText} selectable={true}>
           {resource.accessUrl}
         </Text>
 
@@ -450,6 +575,59 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
             {accessing ? "Accessing…" : "Access Resource"}
           </Text>
         </Pressable>
+
+        {/* Personal Notes Section */}
+        <View style={styles.notesSection}>
+          <View style={styles.notesSectionHeader}>
+            <Text style={styles.notesLabel}>My Notes</Text>
+            {!editingNote && (
+              <Pressable style={styles.notesEditButton} onPress={handleStartEditNote}>
+                <Text style={styles.notesEditButtonText}>
+                  {existingNote ? "Edit" : "Add Note"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          {editingNote ? (
+            <>
+              <TextInput
+                style={[styles.notesInput, noteFocused && styles.notesInputFocused]}
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                onFocus={() => setNoteFocused(true)}
+                onBlur={() => setNoteFocused(false)}
+                placeholder="Add a personal note about this resource…"
+                placeholderTextColor={colors.textSubtle}
+                multiline
+                maxLength={2000}
+              />
+              <View style={styles.notesSaveRow}>
+                {existingNote ? (
+                  <Pressable
+                    style={styles.notesDeleteButton}
+                    onPress={() => void handleDeleteNote()}
+                  >
+                    <Text style={styles.notesDeleteButtonText}>Delete</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable style={styles.notesCancelButton} onPress={handleCancelEditNote}>
+                  <Text style={styles.notesCancelButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.notesSaveButton}
+                  onPress={() => void handleSaveNote()}
+                >
+                  <Text style={styles.notesSaveButtonText}>Save</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : existingNote ? (
+            <Text style={styles.notesText}>{existingNote}</Text>
+          ) : (
+            <Text style={styles.notesEmpty}>No notes yet. Tap "Add Note" to jot something down.</Text>
+          )}
+        </View>
       </ScrollView>
 
       {toast ? (
