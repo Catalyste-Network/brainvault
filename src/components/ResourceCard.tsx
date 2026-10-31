@@ -27,6 +27,10 @@ interface ResourceCardProps {
   onPriceUpdated?: (resourceId: string, newPrice: string) => void;
   /** Called when the user taps "Transfer Ownership" */
   onTransferOwnership?: (resource: Resource) => void;
+  /** Whether the resource is currently favorited */
+  isFavorite?: boolean;
+  /** Called when the user taps the favorite star button */
+  onFavoritePress?: () => void;
 }
 
 function shortenAddress(address: string): string {
@@ -66,6 +70,8 @@ export function ResourceCard({
   editablePrice = false,
   onPriceUpdated,
   onTransferOwnership,
+  isFavorite = false,
+  onFavoritePress,
 }: ResourceCardProps) {
   const { colors, shared, typography } = useAppTheme();
   const verification = verificationStyle(resource.verificationStatus, colors);
@@ -239,6 +245,26 @@ export function ResourceCard({
           >
             <Text style={shared.buttonText}>Copy URL</Text>
           </Pressable>
+          {onFavoritePress ? (
+            <Pressable
+              onPress={onFavoritePress}
+              style={[
+                shared.button,
+                { backgroundColor: isFavorite ? colors.primary : colors.neutralBg },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isFavorite
+                  ? `Remove ${resource.title} from favorites`
+                  : `Add ${resource.title} to favorites`
+              }
+              accessibilityHint="Toggles this resource in your favorites list"
+            >
+              <Text style={shared.buttonText}>
+                {isFavorite ? "★" : "☆"}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 

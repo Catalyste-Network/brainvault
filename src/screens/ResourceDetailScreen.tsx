@@ -8,11 +8,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { fetchResource, ResourceFetchError } from "../api/resources";
+import { accessResource } from "../api/payment";
 import type { RootStackParamList } from "../navigation";
 import type { Resource } from "../types";
 import { getResourceTypeLabel } from "../types";
@@ -151,6 +153,49 @@ function createStyles(colors: ThemeColors) {
       fontSize: 14,
       fontWeight: "500",
     },
+    accessPanel: {
+      marginTop: spacing.lg,
+      padding: spacing.md,
+      backgroundColor: colors.primaryMuted,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      gap: spacing.md,
+    },
+    accessPanelTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.primary,
+    },
+    accessPanelContent: {
+      fontSize: 13,
+      color: colors.text,
+      lineHeight: 20,
+    },
+    accessPanelExternal: {
+      alignSelf: "flex-start",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+    },
+    accessPanelExternalText: {
+      color: "#ffffff",
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    accessPanelClose: {
+      alignSelf: "flex-start",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: colors.neutralBg,
+      borderRadius: 8,
+    },
+    accessPanelCloseText: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontWeight: "600",
+    },
   });
 }
 
@@ -164,6 +209,11 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isTransientError, setIsTransientError] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [accessResult, setAccessResult] = useState<{
+    type: "text";
+    content: string;
+  } | { type: "external"; url: string } | null>(null);
+  const [accessing, setAccessing] = useState(false);
 
   const loadResource = useCallback(async () => {
     setLoading(true);
@@ -195,6 +245,33 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
     const timer = setTimeout(() => setToast(null), 2500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    setAccessResult(null);
+  }, [resource]);
+
+  async function handleAccess() {
+    if (!resource) return;
+    setAccessing(true);
+    setError(null);
+    try {
+      const result = await accessResource(resource.accessUrl);
+      setAccessResult(result);
+      if (result.type === "external") {
+        await openExternalUrl(result.url).catch(() =>
+          setToast("Unable to open external link")
+        );
+      } else {
+        setToast("Resource content retrieved");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to access resource.";
+      setError(message);
+    } finally {
+      setAccessing(false);
+    }
+  }
 
   async function handleCopy() {
     if (!resource) return;
@@ -359,11 +436,55 @@ export function ResourceDetailScreen({ route, navigation }: Props) {
         >
           <Text style={shared.buttonText}>Share Access URL</Text>
         </Pressable>
+
+        <Pressable
+          style={[
+            shared.button,
+            styles.actionButton,
+            accessing && { opacity: 0.6 },
+          ]}
+          onPress={handleAccess}
+          disabled={accessing}
+        >
+          <Text style={shared.buttonText}>
+            {accessing ? "Accessing…" : "Access Resource"}
+          </Text>
+        </Pressable>
       </ScrollView>
 
       {toast ? (
         <View style={styles.toast}>
           <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
+
+      {accessResult ? (
+        <View style={styles.accessPanel}>
+          <Text style={styles.accessPanelTitle}>
+            {accessResult.type === "text" ? "Resource Content" : "External Link"}
+          </Text>
+          {accessResult.type === "text" ? (
+            <Text style={styles.accessPanelContent} selectable={true} numberOfLines={10}>
+              {accessResult.content}
+            </Text>
+          ) : (
+            <Pressable
+              style={styles.accessPanelExternal}
+              onPress={() => {
+                void openExternalUrl(accessResult.url).catch(() =>
+                  setToast("Unable to open link")
+                );
+              }}
+            >
+              <Text style={styles.accessPanelExternalText}>Open in browser →</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={styles.accessPanelClose}
+            onPress={() => setAccessResult(null)}
+          >
+            <Text style={styles.accessPanelCloseText}>Dismiss</Text>
+          </Pressable>
         </View>
       ) : null}
     </SafeAreaView>

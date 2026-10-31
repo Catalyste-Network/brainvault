@@ -1,6 +1,7 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { CatalogScreen } from "./screens/CatalogScreen";
+import { FavoritesScreen } from "./screens/FavoritesScreen";
 import { ResourceDetailScreen } from "./screens/ResourceDetailScreen";
 import { ScannerScreen } from "./screens/ScannerScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
@@ -9,6 +10,7 @@ import { PublisherResourcesScreen } from "./screens/PublisherResourcesScreen";
 
 export type RootStackParamList = {
   Catalog: undefined;
+  Favorites: undefined;
   ResourceDetail: { resourceId: string };
   Scanner: undefined;
   Settings: undefined;
@@ -22,6 +24,11 @@ export function RootNavigator() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Catalog" component={CatalogScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="Favorites"
+        component={FavoritesScreen}
+        options={{ title: "Favorites" }}
+      />
       <Stack.Screen
         name="ResourceDetail"
         component={ResourceDetailScreen}
